@@ -2,6 +2,9 @@ from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 import json
 import os
+import random
+
+from guardrail import is_ib_related
 
 load_dotenv()
 
@@ -35,18 +38,6 @@ def save_progress(subject, progress):
         json.dump(progress, f, indent=2)
 
 
-def is_ib_related(subject, topic):
-    check_prompt = f"""A student wants a quiz question for their IB (International Baccalaureate) MYP studies.
-
-Subject: {subject}
-Topic: {topic}
-
-Is this a legitimate school subject and topic (including common abbreviations, e.g. "Math" for "Mathematics")? Answer only "yes" or "no"."""
-    result = model.invoke(check_prompt)
-    print(f"[is_ib_related] raw model output: {result.content!r}")
-    return "yes" in result.content.lower()
-
-
 DIFFICULTY_INSTRUCTIONS = {
     "Needs Practice": "Make this an EASY, foundational question that reinforces basic concepts and definitions.",
     "Improving": "Make this a STANDARD difficulty question appropriate for an MYP student with a working understanding of the topic.",
@@ -64,7 +55,11 @@ def generate_question(subject, topic, math_type=None):
     Returns a dictionary with the question text, options, and correct answer
     separated out, so our code can check answers automatically.
     """
-    if not is_ib_related(subject, topic):
+    related = is_ib_related(f"Subject: {subject}\nTopic: {topic}")
+    if related is None:
+        print("I couldn't quite tell if that's IB-related — try rephrasing the subject or topic.")
+        return None
+    if related is False:
         return None
 
     progress_key = get_progress_key(subject, math_type)
@@ -174,10 +169,21 @@ def run_quiz(subject, topic, math_type=None):
     print(f"C: {q['C']}")
     print(f"D: {q['D']}")
 
-    max_attempts = 5
+    max_attempts = 3
     is_correct = False
 
     for attempt in range(1, max_attempts + 1):
+        if attempt == 3:
+            use_lifeline = input(
+                "\nWant to use a 50/50? This removes two wrong options. (y/n): ").strip().lower()
+            if use_lifeline == "y":
+                wrong_letters = [l for l in ("A", "B", "C", "D") if l != q["correct"]]
+                removed = set(random.sample(wrong_letters, 2))
+                remaining = [l for l in ("A", "B", "C", "D") if l not in removed]
+                print("\n50/50 used! Remaining options:")
+                for l in remaining:
+                    print(f"{l}: {q[l]}")
+
         answer = input("\nYour answer (A/B/C/D): ").strip().upper()
         is_correct = (answer == q["correct"])
 

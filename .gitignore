@@ -1,1 +1,9 @@
 .env
+__pycache__/
+
+__pycache__/
+progress/
+progress.json
+plans.json
+venv/
+.venv/
